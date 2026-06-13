@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyc
+.pytest_cache/
+
+# Local environments
+.venv/
+.venv_linux/
+app/.venv/
+app/.conda311/
+
+# Secrets / local config
+.env
+.env.local
+app/.env
+app/.env.local
+
+# Local/editor temp files
+tempCodeRunnerFile.py
+app/tempCodeRunnerFile.py
+.DS_Store
+Thumbs.db
+
+# Frontend/design scratch
+style_temp/
+
+# Remix / Solidity compiler artifacts
+artifacts/
+**/artifacts/
+**/artifacts/**
+build/
+deps/
+states/
+cache/
+
+# Debug/build metadata
+*.dbg.json
+*.tsbuildinfo
+
+# Local env templates/scratch
+.env.example

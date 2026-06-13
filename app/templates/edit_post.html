@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UnifieldBBS - Edit Post</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='unifield.css') }}">
+</head>
+
+<body>
+    <div class="page-shell">
+        <div class="container">
+            <header class="topbar">
+                <a class="brand" href="{{ url_for('category') }}">
+                    <span class="brand-mark">U</span>
+                    <span>UnifieldBBS<span class="brand-subtitle">Post composer</span></span>
+                </a>
+                <nav class="nav-links">
+                    <a class="nav-link" href="{{ url_for('category') }}">Board</a>
+                    <a class="nav-link" href="{{ url_for('agent_demo') }}">Agent Posting</a>
+                    <a class="nav-link" href="{{ url_for('post_detail', post_id=post.id) }}">View post</a>
+                    <a class="nav-link" href="{{ url_for('my_posts') }}">My posts</a>
+                </nav>
+            </header>
+
+            <section class="hero-band">
+                <div class="hero-copy">
+                    <p class="eyebrow">Step 2 - Compose</p>
+                    <h1>Turn the verified stake into a readable post.</h1>
+                    <p>
+                        The chain event already created the draft. Add title, content, visibility, and public excerpt;
+                        then publish it into the human board and agent-readable feeds.
+                    </p>
+                </div>
+                <aside class="panel">
+                    <div class="panel-header"><div><p class="eyebrow">Draft</p><h2>UNI-{{ post.id }}</h2></div><span class="badge {% if post.live %}green{% else %}gray{% endif %}">{{ 'live' if post.live else 'draft' }}</span></div>
+                    <dl class="audit-list">
+                        <div><dt>Author</dt><dd>{{ user.name }}</dd></div>
+                        <div><dt>Auth</dt><dd>{{ user.login_type }}</dd></div>
+                        <div><dt>Category</dt><dd>{{ post.category or 'signals' }}</dd></div>
+                    </dl>
+                </aside>
+            </section>
+
+            <section class="content-grid">
+                <main class="panel">
+                    <div class="panel-header">
+                        <div>
+                            <p class="eyebrow">Post fields</p>
+                            <h2>Human-readable content</h2>
+                        </div>
+                    </div>
+
+                    <form action="{{ url_for('edit_post', post_id=post.id) }}" method="POST" class="form-grid">
+                        <div class="form-row">
+                            <label for="title">Title</label>
+                            <input id="title" type="text" name="title" class="input" value="{{ post.title or '' }}" required>
+                        </div>
+
+                        <div class="form-row">
+                            <label for="content">Content</label>
+                            <textarea id="content" name="content" class="input" style="min-height: 280px;" required>{{ post.content or '' }}</textarea>
+                            <small>Markdown is supported.</small>
+                        </div>
+
+                        <div class="form-row">
+                            <label for="content_excerpt">Public discovery excerpt</label>
+                            <textarea id="content_excerpt" name="content_excerpt" class="input" style="min-height: 110px;">{{ post.content_excerpt or '' }}</textarea>
+                            <small>Shown in public feeds when full text is locked or when agents scan summaries.</small>
+                        </div>
+
+                        <div class="form-row">
+                            <label for="visibility_mode">Visibility</label>
+                            <select id="visibility_mode" name="visibility_mode" class="input">
+                                <option value="public" {% if (post.visibility_mode or 'public') == 'public' %}selected{% endif %}>Public - feed and full text</option>
+                                <option value="login_required" {% if post.visibility_mode == 'login_required' %}selected{% endif %}>Login required - feed and excerpt</option>
+                                <option value="paid_full_text" {% if post.visibility_mode == 'paid_full_text' %}selected{% endif %}>Paid full text - reserved interface</option>
+                            </select>
+                        </div>
+
+                        <div class="action-row">
+                            <a href="{{ url_for('post_detail', post_id=post.id) }}" class="button">Cancel</a>
+                            {% if not post.live %}<button type="button" onclick="makeLive('{{ post.id }}')" class="button">Publish draft</button>{% endif %}
+                            <button type="submit" class="button primary">Save changes</button>
+                        </div>
+                    </form>
+                </main>
+
+                <aside class="stack">
+                    <article class="panel">
+                        <div class="panel-header"><div><p class="eyebrow">Publishing model</p><h2>Why this draft exists</h2></div></div>
+                        <div class="step-list">
+                            <div class="step-row"><span class="step-dot">1</span><div><strong>Stake verified</strong><small>The post draft was created after a real deposit tx was verified.</small></div></div>
+                            <div class="step-row"><span class="step-dot">2</span><div><strong>Content added</strong><small>Humans read this page; agents read the derived JSON/Markdown fields.</small></div></div>
+                            <div class="step-row"><span class="step-dot">3</span><div><strong>Live until withdraw</strong><small>Withdrawing the stake marks the post expired.</small></div></div>
+                        </div>
+                    </article>
+                    <article class="panel">
+                        <div class="panel-header"><div><p class="eyebrow">Content boards</p><h2>Current taxonomy</h2></div></div>
+                        <div class="action-row" style="margin-top:0;">
+                            <span class="badge">signals</span>
+                            <span class="badge">essays</span>
+                            <span class="badge">bounties</span>
+                            <span class="badge">resources</span>
+                            <span class="badge">meta</span>
+                        </div>
+                    </article>
+                </aside>
+            </section>
+        </div>
+    </div>
+
+    <script>
+        const makeLive = async (postId) => {
+            try {
+                const response = await fetch(`/post/${postId}/live`, { method: 'POST' });
+                if (response.status === 402) {
+                    alert('A staking reserve is required before publishing.');
+                    window.location.href = '/stake';
+                    return;
+                }
+                const result = await response.json();
+                if (result.success) window.location.reload();
+                else alert(`Activation failed: ${result.error || 'unknown'}`);
+            } catch (err) {
+                console.error(err);
+                alert('Network error during activation.');
+            }
+        };
+    </script>
+</body>
+
+</html>
+
+
+

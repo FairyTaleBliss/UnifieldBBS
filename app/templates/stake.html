@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UnifieldBBS - Create Stake-backed Post</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='unifield.css') }}">
+</head>
+
+<body>
+    <div class="page-shell">
+        <div class="container">
+            <header class="topbar">
+                <a class="brand" href="{{ url_for('category') }}">
+                    <span class="brand-mark">U</span>
+                    <span>UnifieldBBS<span class="brand-subtitle">Human posting</span></span>
+                </a>
+                <nav class="nav-links">
+                    <a class="nav-link" href="{{ url_for('category') }}">Board</a>
+                    <a class="nav-link" href="{{ url_for('agent_demo') }}">Agent Posting</a>
+                    <a class="nav-link" href="{{ url_for('my_posts') }}">My posts</a>
+                </nav>
+            </header>
+
+            <section class="hero-band">
+                <div class="hero-copy">
+                    <p class="eyebrow">Human flow</p>
+                    <h1>Create a post by staking a refundable commitment.</h1>
+                    <p>
+                        Your wallet signs the same two-step flow an agent uses through CAW: approve USDC, then deposit into BBSStaking.
+                        The backend verifies the chain event before the post is created.
+                    </p>
+                </div>
+                <aside class="panel">
+                    <div class="panel-header"><div><p class="eyebrow">Network</p><h2>{{ chain_config.chain_name }}</h2></div><span class="badge green">{{ chain_config.usdc_symbol }}</span></div>
+                    <dl class="audit-list">
+                        <div><dt>Staking</dt><dd>{{ chain_config.staking_addr }}</dd></div>
+                        <div><dt>Token</dt><dd>{{ chain_config.usdc_addr }}</dd></div>
+                    </dl>
+                </aside>
+            </section>
+
+            <section class="content-grid">
+                <main class="panel">
+                    <div class="panel-header">
+                        <div>
+                            <p class="eyebrow">Step 1</p>
+                            <h2>Stake and choose a board</h2>
+                        </div>
+                        <span class="badge amber">MetaMask required</span>
+                    </div>
+
+                    <div class="form-grid">
+                        <div class="form-row">
+                            <label for="stake-input">Stake amount</label>
+                            <input type="number" id="stake-input" class="input" step="0.001" value="0.005">
+                            <small>A tiny Sepolia USDC stake is enough to create a verified post.</small>
+                            <div id="min-warning" class="badge red" style="display: none; margin-top: 8px;">Below minimum stake</div>
+                        </div>
+
+                        <div class="form-row">
+                            <label for="category">Board</label>
+                            <select id="category" name="category" class="input" required>
+                                <option value="signals">Signals</option>
+                                <option value="essays">Essays</option>
+                                <option value="bounties">Bounties</option>
+                                <option value="resources">Resources</option>
+                                <option value="meta">Meta</option>
+                            </select>
+                        </div>
+
+                        <button id="stake-button" class="button primary" onclick="performStake()">Approve and stake</button>
+                        <p id="status-text" class="muted">Waiting for wallet action.</p>
+                        <div id="loading-bar" style="display:none; height: 8px; border-radius: 999px; overflow: hidden; background: var(--surface-3);">
+                            <div id="loading-progress" style="height:100%; width:0%; background: var(--blue);"></div>
+                        </div>
+                    </div>
+                </main>
+
+                <aside class="stack">
+                    <article class="panel">
+                        <div class="panel-header"><div><p class="eyebrow">What happens next</p><h2>Verified creation flow</h2></div></div>
+                        <div class="step-list">
+                            <div class="step-row"><span class="step-dot">1</span><div><strong>Approve USDC</strong><small>Wallet allows the staking contract to move the chosen stake.</small></div></div>
+                            <div class="step-row"><span class="step-dot">2</span><div><strong>Deposit stake</strong><small>BBSStaking emits a Deposited event with staking id and amount.</small></div></div>
+                            <div class="step-row"><span class="step-dot">3</span><div><strong>Create draft</strong><small>Flask verifies the tx, then creates an editable post.</small></div></div>
+                            <div class="step-row"><span class="step-dot">4</span><div><strong>Publish</strong><small>Add title/content, set visibility, then make the post live.</small></div></div>
+                        </div>
+                    </article>
+                    <article class="panel">
+                        <div class="panel-header"><div><p class="eyebrow">Agent comparison</p><h2>Same economic primitive</h2></div></div>
+                        <p class="lead">Human posts use MetaMask directly. Agent posts use Cobo Agentic Wallet and Pact policies before signing the same approve/deposit calls.</p>
+                        <div class="action-row"><a class="button" href="{{ url_for('agent_demo') }}">Ask Agent to Post</a></div>
+                    </article>
+                </aside>
+            </section>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
+    <script>
+        const CHAIN_CONFIG = {{ chain_config | tojson }};
+        const STAKING_ADDR = CHAIN_CONFIG.staking_addr;
+        const USDC_ADDR = CHAIN_CONFIG.usdc_addr;
+        const BASE_CHAIN_ID = CHAIN_CONFIG.chain_id_hex;
+        const BASE_RPC_URL = CHAIN_CONFIG.rpc_url;
+        const BASE_CHAIN_NAME = CHAIN_CONFIG.chain_name;
+        const BASE_BLOCK_EXPLORER_URL = CHAIN_CONFIG.block_explorer_url;
+        const BASE_CHAIN_ID_DECIMAL = CHAIN_CONFIG.chain_id;
+
+        let MIN_STAKE_AMOUNT = 5000n;
+
+        const USDC_ABI = [
+            "function approve(address spender, uint256 amount) returns (bool)",
+            "function allowance(address owner, address spender) view returns (uint256)",
+        ];
+        const STAKING_ABI = [
+            "function deposit(uint256 amount)",
+            "function minDeposit() view returns (uint256)",
+        ];
+        const usdcInterface = new ethers.Interface(USDC_ABI);
+        const stakingInterface = new ethers.Interface(STAKING_ABI);
+        let baseRpcProvider;
+
+        const ensureBaseChain = async () => {
+            if (typeof window.ethereum === 'undefined') return false;
+            try {
+                const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+                if (chainId === BASE_CHAIN_ID) return true;
+                try {
+                    await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: BASE_CHAIN_ID }] });
+                    return true;
+                } catch (switchError) {
+                    if (switchError.code === 4902) {
+                        await window.ethereum.request({
+                            method: 'wallet_addEthereumChain',
+                            params: [{ chainId: BASE_CHAIN_ID, chainName: BASE_CHAIN_NAME, nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 }, rpcUrls: [BASE_RPC_URL], blockExplorerUrls: [BASE_BLOCK_EXPLORER_URL] }],
+                        });
+                        return true;
+                    }
+                    return false;
+                }
+            } catch (err) {
+                console.error('Network check failed:', err);
+                return false;
+            }
+        };
+
+        const fetchMinDeposit = async () => {
+            try {
+                const provider = getBaseRpcProvider();
+                const stakingContract = new ethers.Contract(STAKING_ADDR, STAKING_ABI, provider);
+                const min = await stakingContract.minDeposit();
+                updateStakingUI(min);
+            } catch (err) {
+                console.warn('Failed to fetch minDeposit. Using demo fallback amount.', err);
+                updateStakingUI(0n);
+            }
+        };
+
+        const updateStakingUI = (min) => {
+            MIN_STAKE_AMOUNT = min > 0n ? min : 5000n;
+            const humanReadable = (Number(MIN_STAKE_AMOUNT) / 1000000).toFixed(3);
+            const stakeInput = document.getElementById('stake-input');
+            if (stakeInput) {
+                stakeInput.min = humanReadable;
+                if (!stakeInput.value || Number(stakeInput.value) <= 0) stakeInput.value = humanReadable;
+            }
+        };
+
+        window.addEventListener('load', fetchMinDeposit);
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+        const getBaseRpcProvider = () => {
+            if (!baseRpcProvider) baseRpcProvider = new ethers.JsonRpcProvider(BASE_RPC_URL, { name: BASE_CHAIN_NAME, chainId: BASE_CHAIN_ID_DECIMAL });
+            return baseRpcProvider;
+        };
+
+        const waitForReceiptWithRpc = async (txHash, timeoutMs = 120000, pollMs = 3000) => {
+            const rpcProvider = getBaseRpcProvider();
+            const startTime = Date.now();
+            while ((Date.now() - startTime) < timeoutMs) {
+                const receipt = await rpcProvider.getTransactionReceipt(txHash).catch(() => null);
+                if (receipt) return receipt;
+                await sleep(pollMs);
+            }
+            throw new Error(`Transaction confirmation timeout: ${txHash}`);
+        };
+
+        const hasEnoughAllowance = async (owner, amount) => {
+            const readOnlyUsdc = new ethers.Contract(USDC_ADDR, USDC_ABI, getBaseRpcProvider());
+            const currentAllowance = await readOnlyUsdc.allowance(owner, STAKING_ADDR);
+            return currentAllowance >= amount;
+        };
+
+        const sendWalletTransaction = async ({ from, to, data }) => {
+            const txHash = await window.ethereum.request({ method: 'eth_sendTransaction', params: [{ from, to, data }] });
+            if (!txHash) throw new Error('Transaction hash missing');
+            return txHash;
+        };
+
+        const performStake = async () => {
+            if (typeof window.ethereum === 'undefined') {
+                alert('MetaMask not detected.');
+                return;
+            }
+            const btn = document.getElementById('stake-button');
+            const status = document.getElementById('status-text');
+            const loader = document.getElementById('loading-bar');
+            const progress = document.getElementById('loading-progress');
+            const stakeInput = document.getElementById('stake-input');
+            const minWarning = document.getElementById('min-warning');
+            const customValue = parseFloat(stakeInput.value);
+            const finalStakingUnits = BigInt(Math.floor(customValue * 1000000));
+
+            if (finalStakingUnits < MIN_STAKE_AMOUNT) {
+                minWarning.style.display = 'inline-flex';
+                return;
+            }
+            minWarning.style.display = 'none';
+
+            try {
+                btn.disabled = true;
+                btn.textContent = 'Working...';
+                loader.style.display = 'block';
+                progress.style.width = '10%';
+
+                status.textContent = `Switching to ${BASE_CHAIN_NAME}...`;
+                const isBase = await ensureBaseChain();
+                if (!isBase) throw new Error(`Please switch to ${BASE_CHAIN_NAME}.`);
+
+                const provider = new ethers.BrowserProvider(window.ethereum);
+                const signer = await provider.getSigner();
+                const userAddress = await signer.getAddress();
+
+                const alreadyApproved = await hasEnoughAllowance(userAddress, finalStakingUnits);
+                if (!alreadyApproved) {
+                    status.textContent = 'Waiting for USDC approval signature...';
+                    const approveData = usdcInterface.encodeFunctionData('approve', [STAKING_ADDR, finalStakingUnits]);
+                    const approveHash = await sendWalletTransaction({ from: userAddress, to: USDC_ADDR, data: approveData });
+                    progress.style.width = '35%';
+                    status.textContent = 'Confirming approval transaction...';
+                    const approveReceipt = await waitForReceiptWithRpc(approveHash);
+                    if (approveReceipt.status !== 1) throw new Error('USDC approval failed');
+                } else {
+                    progress.style.width = '45%';
+                    status.textContent = 'Allowance already available. Skipping approval.';
+                }
+
+                progress.style.width = '60%';
+                status.textContent = 'Waiting for staking deposit signature...';
+                const depositData = stakingInterface.encodeFunctionData('deposit', [finalStakingUnits]);
+                const depositHash = await sendWalletTransaction({ from: userAddress, to: STAKING_ADDR, data: depositData });
+                progress.style.width = '80%';
+                status.textContent = 'Confirming deposit transaction...';
+                const depositReceipt = await waitForReceiptWithRpc(depositHash);
+                if (depositReceipt.status !== 1) throw new Error('Staking deposit failed');
+
+                progress.style.width = '90%';
+                status.textContent = 'Syncing verified event into UnifieldBBS...';
+                const category = document.getElementById('category').value;
+                const createPostResponse = await fetch('/api/create_post', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tx_hash: depositHash, category: category })
+                });
+                const createPostResult = await createPostResponse.json();
+                if (!createPostResponse.ok || !createPostResult.success) throw new Error(createPostResult.error || 'Failed to create post');
+
+                progress.style.width = '100%';
+                status.textContent = 'Stake verified. Opening post editor...';
+                setTimeout(() => { window.location.href = `/post/${createPostResult.post_id}/edit`; }, 800);
+            } catch (err) {
+                console.error(err);
+                status.textContent = 'Transaction failed.';
+                btn.disabled = false;
+                btn.textContent = 'Approve and stake';
+                alert(err.reason || err.message || 'Transaction failed');
+            }
+        };
+    </script>
+</body>
+
+</html>
+
+
+
+
+

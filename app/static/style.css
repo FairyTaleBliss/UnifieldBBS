@@ -1,0 +1,158 @@
+@import url('https://unpkg.com/terminal.css@0.7.2/dist/terminal.min.css');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+:root {
+    --terminal-green: #39FF14;
+    /* Neon Green for better visibility */
+    --terminal-black: #080808;
+    --terminal-dim: #2aa198;
+}
+
+body {
+    background-color: var(--terminal-black);
+    color: var(--terminal-green);
+    font-family: 'JetBrains Mono', Courier, monospace;
+    font-size: 16px;
+    line-height: 1.6;
+}
+
+.container {
+    padding: 40px 20px;
+}
+
+/* Nav Improvements */
+.terminal-nav {
+    border-bottom: 2px solid var(--terminal-green);
+    margin-bottom: 50px;
+}
+
+.terminal-logo a {
+    font-size: 1.8rem !important;
+    font-weight: 800;
+}
+
+.terminal-menu ul li a {
+    color: var(--terminal-green) !important;
+    padding: 4px 8px;
+}
+
+.menu-item {
+    border: 2px solid var(--terminal-green) !important;
+}
+
+/* Card Improvements */
+.terminal-card {
+    border: 2px solid var(--terminal-green) !important;
+    margin-bottom: 30px;
+    background: transparent !important;
+}
+
+.terminal-card header {
+    background: var(--terminal-green) !important;
+    color: var(--terminal-black) !important;
+    font-weight: bold;
+    font-size: 1.2rem;
+    padding: 10px 15px !important;
+}
+
+/* Posts Display (BBS Layout) */
+.post-list {
+    padding: 10px;
+}
+
+.post-item {
+    border-bottom: 1px dashed rgba(57, 255, 20, 0.3);
+    padding: 2.5rem 0;
+    cursor: pointer;
+    transition: all 0.2s ease-in-out;
+}
+
+.post-item:hover {
+    background: rgba(57, 255, 20, 0.05);
+    border-bottom: 1px dashed rgba(57, 255, 20, 0.8);
+}
+
+.post-item:last-child {
+    border-bottom: none;
+}
+
+.post-item h3 {
+    font-size: 1.8rem;
+    color: var(--terminal-green);
+    margin: 10px 0 !important;
+    font-weight: 700;
+}
+
+.label {
+    background: var(--terminal-green);
+    color: var(--terminal-black);
+    padding: 2px 8px;
+    font-size: 0.8rem;
+    font-weight: bold;
+    margin-right: 10px;
+}
+
+.muted {
+    opacity: 0.6;
+    font-size: 0.9rem;
+}
+
+.terminal-prompt::before {
+    content: "> ";
+    color: var(--terminal-green);
+}
+
+/* Buttons */
+.terminal-button {
+    border: 2px solid var(--terminal-green) !important;
+    background: transparent !important;
+    color: var(--terminal-green) !important;
+    font-size: 1.1rem !important;
+    font-weight: 700 !important;
+    padding: 12px 24px !important;
+    transition: all 0.2s;
+}
+
+.terminal-button:hover {
+    background: var(--terminal-green) !important;
+    color: var(--terminal-black) !important;
+}
+
+footer {
+    opacity: 0.5;
+    margin-top: 100px;
+}
+
+.terminal-card h1 {
+    color: #39FF14;
+}
+
+/* Tooltips */
+.has-tooltip:hover .terminal-tooltip {
+    display: block;
+}
+
+.terminal-tooltip {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    max-width: 250px;
+    background: #f00;
+    color: #fff;
+    padding: 10px;
+    font-size: 0.75rem;
+    z-index: 1000;
+    border: 1px solid #fff;
+    margin-top: 10px;
+}
+
+.terminal-tooltip::before {
+    content: "";
+    position: absolute;
+    bottom: 100%;
+    right: 15px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: transparent transparent #f00 transparent;
+}

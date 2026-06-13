@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UnifieldBBS - My Posts</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='unifield.css') }}">
+</head>
+
+<body>
+    <div class="page-shell">
+        <div class="container">
+            <header class="topbar">
+                <a class="brand" href="{{ url_for('category') }}">
+                    <span class="brand-mark">U</span>
+                    <span>UnifieldBBS<span class="brand-subtitle">My stake-backed posts</span></span>
+                </a>
+                <nav class="nav-links">
+                    <a class="nav-link" href="{{ url_for('category') }}">Board</a>
+                    <a class="nav-link" href="{{ url_for('agent_demo') }}">Agent Posting</a>
+                    {% if user.login_type == 'wallet' %}<a class="button primary" href="{{ url_for('stake') }}">New post</a>{% endif %}
+                    <a class="nav-link" href="{{ url_for('logout') }}">Logout</a>
+                </nav>
+            </header>
+
+            <section class="hero-band">
+                <div class="hero-copy">
+                    <p class="eyebrow">Profile</p>
+                    <h1>Manage your stake-backed posts.</h1>
+                    <p>Withdraw a stake when the post is complete. The backend verifies the Withdrawn event and marks the post expired.</p>
+                </div>
+                <aside class="panel">
+                    <div class="panel-header"><div><p class="eyebrow">Account</p><h2>{{ user.name }}</h2></div><span class="badge">{{ user.login_type }}</span></div>
+                    <dl class="audit-list">
+                        <div><dt>User ID</dt><dd>{{ user.id }}</dd></div>
+                        {% if user.username %}<div><dt>Handle</dt><dd>@{{ user.username }}</dd></div>{% endif %}
+                        {% if user.email %}<div><dt>Email</dt><dd>{{ user.email }}</dd></div>{% endif %}
+                        <div><dt>Reserve</dt><dd id="active-reserve-text">Checking chain state...</dd></div>
+                    </dl>
+                </aside>
+            </section>
+
+            <section class="panel">
+                <div class="panel-header">
+                    <div>
+                        <p class="eyebrow">Posts</p>
+                        <h2>Commitment status</h2>
+                    </div>
+                    {% if user.login_type == 'wallet' %}<a href="{{ url_for('stake') }}" class="button primary">Create post</a>{% endif %}
+                </div>
+
+                <div class="issue-list">
+                    {% if posts %}
+                    {% for post in posts %}
+                    <div class="issue-row">
+                        <span class="issue-key">UNI-{{ post.id }}</span>
+                        <a class="issue-main" href="{{ url_for('post_detail', post_id=post.id) }}">
+                            <strong>{{ post.title or 'Untitled stake-backed post' }}</strong>
+                            <small>{{ post.category or 'signals' }} - {{ post.staking_label }} - {{ post.created_at }}</small>
+                        </a>
+                        <div class="action-row" style="margin:0; justify-content:flex-end;">
+                            {% if post.live %}<span class="badge green">active</span>{% else %}<span class="badge gray">draft</span>{% endif %}
+                            <button onclick="withdrawReserve('{{ post.staking_id }}')" class="button danger" {% if not post.staking_id %}disabled{% endif %}>Withdraw & expire</button>
+                            {% if not post.live %}<button onclick="makeLive('{{ post.id }}')" class="button">Publish</button>{% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                    {% else %}
+                    <div class="empty-state">No posts yet. Create one with a wallet stake, or review the CAW-backed Agent Posting receipt.</div>
+                    {% endif %}
+                </div>
+            </section>
+
+            <div class="footer-note">Withdrawals are verified from chain events before posts expire.</div>
+        </div>
+    </div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
+    <script>
+        const CHAIN_CONFIG = {{ chain_config | tojson }};
+        const STAKING_ADDR = CHAIN_CONFIG.staking_addr;
+        const BASE_CHAIN_ID = CHAIN_CONFIG.chain_id_hex;
+        const BASE_RPC_URL = CHAIN_CONFIG.rpc_url;
+        const BASE_CHAIN_NAME = CHAIN_CONFIG.chain_name;
+        const BASE_BLOCK_EXPLORER_URL = CHAIN_CONFIG.block_explorer_url;
+        const BASE_CHAIN_ID_DECIMAL = CHAIN_CONFIG.chain_id;
+        const WALLET_ADDRESS = "{{ user.address if user.login_type == 'wallet' and user.address else '' }}";
+
+        let MIN_RESERVE_AMOUNT = 10000000n; // Default fallback: 10.00 USDC (6 decimals)
+        const STAKING_ABI = [
+            "function withdraw(uint256 stakingId)",
+            "function minDeposit() view returns (uint256)",
+            "function minStake() view returns (uint256)",
+            "function balanceOf(address account) view returns (uint256)",
+        ];
+        const stakingInterface = new ethers.Interface(STAKING_ABI);
+
+        let baseRpcProvider;
+
+        // Ensure user is on Base Chain
+        const ensureBaseChain = async () => {
+            if (typeof window.ethereum === 'undefined') return false;
+
+            try {
+                const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+                if (chainId === BASE_CHAIN_ID) return true;
+
+                try {
+                    await window.ethereum.request({
+                        method: 'wallet_switchEthereumChain',
+                        params: [{ chainId: BASE_CHAIN_ID }],
+                    });
+                    return true;
+                } catch (switchError) {
+                    if (switchError.code === 4902) {
+                        try {
+                            await window.ethereum.request({
+                                method: 'wallet_addEthereumChain',
+                                params: [{
+                                    chainId: BASE_CHAIN_ID,
+                                    chainName: BASE_CHAIN_NAME,
+                                    nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
+                                    rpcUrls: [BASE_RPC_URL],
+                                    blockExplorerUrls: [BASE_BLOCK_EXPLORER_URL]
+                                }],
+                            });
+                            return true;
+                        } catch (addError) {
+                            console.error('Failed to add Base network:', addError);
+                            return false;
+                        }
+                    }
+                    console.error('Failed to switch to Base chain:', switchError);
+                    return false;
+                }
+            } catch (err) {
+                console.error('Network check failed:', err);
+                return false;
+            }
+        };
+
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+        const getBaseRpcProvider = () => {
+            if (!baseRpcProvider) {
+                baseRpcProvider = new ethers.JsonRpcProvider(
+                    BASE_RPC_URL,
+                    { name: BASE_CHAIN_NAME, chainId: BASE_CHAIN_ID_DECIMAL }
+                );
+            }
+            return baseRpcProvider;
+        };
+
+        const waitForReceiptWithRpc = async (txHash, timeoutMs = 120000, pollMs = 3000) => {
+            const rpcProvider = getBaseRpcProvider();
+            const startTime = Date.now();
+
+            while ((Date.now() - startTime) < timeoutMs) {
+                try {
+                    const receipt = await rpcProvider.getTransactionReceipt(txHash);
+                    if (receipt) return receipt;
+                } catch (receiptError) {
+                    console.warn('Receipt lookup failed, retrying...', receiptError);
+                }
+
+                await sleep(pollMs);
+            }
+
+            throw new Error(`TX_CONFIRMATION_TIMEOUT: ${txHash}`);
+        };
+
+        const sendWalletTransaction = async ({ from, to, data }) => {
+            const txHash = await window.ethereum.request({
+                method: 'eth_sendTransaction',
+                params: [{ from, to, data }],
+            });
+
+            if (!txHash) {
+                throw new Error('TX_HASH_MISSING');
+            }
+
+            return txHash;
+        };
+
+        const syncWithdrawalState = async (txHash) => {
+            const response = await fetch('/api/deactivate_post', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tx_hash: txHash }),
+            });
+
+            const result = await response.json();
+            if (!response.ok || !result.success) {
+                throw new Error(result.error || 'FAILED_TO_SYNC_WITHDRAWAL_STATE');
+            }
+        };
+
+        // Fetch minDeposit to update UI
+        const fetchMinDeposit = async () => {
+            const RPC_URLS = [BASE_RPC_URL];
+
+            for (const rpc of RPC_URLS) {
+                try {
+                    const provider = new ethers.JsonRpcProvider(rpc);
+                    const stakingContract = new ethers.Contract(STAKING_ADDR, STAKING_ABI, provider);
+                    const min = await trySelectMin(stakingContract);
+                    if (min) {
+                        updateDashboardUI(min);
+                        return;
+                    }
+                } catch (err) {
+                    console.warn(`RPC ${rpc} failed or contract not found there.`);
+                }
+            }
+
+            if (typeof window.ethereum === 'undefined') return;
+            try {
+                const provider = new ethers.BrowserProvider(window.ethereum);
+                const stakingContract = new ethers.Contract(STAKING_ADDR, STAKING_ABI, provider);
+                const min = await trySelectMin(stakingContract);
+                if (min) updateDashboardUI(min);
+            } catch (err) {
+                console.error('All providers failed to fetch minDeposit. Using fallback amount.', err);
+            }
+        };
+
+        const trySelectMin = async (contract) => {
+            const selectors = ['minDeposit', 'MIN_DEPOSIT', 'minimumDeposit', 'minStake', 'minAmount'];
+            for (const fn of selectors) {
+                try {
+                    return await contract[fn]();
+                } catch (err) {
+                    continue;
+                }
+            }
+            return null;
+        };
+
+        const updateDashboardUI = (min) => {
+            MIN_RESERVE_AMOUNT = min;
+            const el = document.getElementById('active-reserve-text');
+            if (el) {
+                const humanReadable = (Number(min) / 1000000).toFixed(2);
+                el.textContent = `COMMITMENT_ACTIVE (${humanReadable} USDC RESERVED)`;
+            }
+        };
+
+        const getUserStakedBalance = async (signerAddress, contract) => {
+            const selectors = ['balanceOf', 'deposits', 'stakedAmount'];
+            for (const fn of selectors) {
+                try {
+                    return await contract[fn](signerAddress);
+                } catch (err) {
+                    continue;
+                }
+            }
+            return 0n;
+        };
+
+        const refreshReserveStatus = async () => {
+            if (!WALLET_ADDRESS) return;
+
+            const el = document.getElementById('active-reserve-text');
+            if (!el) return;
+
+            try {
+                const provider = getBaseRpcProvider();
+                const stakingContract = new ethers.Contract(STAKING_ADDR, STAKING_ABI, provider);
+                const userBalance = await getUserStakedBalance(WALLET_ADDRESS, stakingContract);
+                if (userBalance && userBalance > 0n) {
+                    const humanReadable = (Number(userBalance) / 1000000).toFixed(2);
+                    el.textContent = `COMMITMENT_ACTIVE (${humanReadable} USDC RESERVED)`;
+                    return;
+                }
+            } catch (err) {
+                console.warn('Failed to fetch on-chain reserve status.', err);
+            }
+
+            const fallbackReadable = (Number(MIN_RESERVE_AMOUNT) / 1000000).toFixed(2);
+            el.textContent = `COMMITMENT_ACTIVE (${fallbackReadable} USDC RESERVED)`;
+        };
+
+        window.addEventListener('load', async () => {
+            await fetchMinDeposit();
+            await refreshReserveStatus();
+        });
+
+        const makeLive = async (postId) => {
+            try {
+                const response = await fetch(`/post/${postId}/live`, {
+                    method: 'POST'
+                });
+
+                if (response.status === 402) {
+                    alert('STAKING_REQUIRED: YOU_MUST_PROVIDE_A_RESERVE_TO_ACTIVATE_TRANSMISSIONS.');
+                    window.location.href = '/stake';
+                    return;
+                }
+
+                const result = await response.json();
+                if (result.success) {
+                    window.location.reload();
+                } else {
+                    alert(`ERR: ACTIVATION_FAILED (${result.error || 'UNKNOWN'})`);
+                }
+            } catch (err) {
+                console.error(err);
+                alert('ERR: NETWORK_ERROR_DURING_ACTIVATION');
+            }
+        };
+
+        const withdrawReserve = async (stakingId) => {
+            if (typeof window.ethereum === 'undefined') {
+                alert('ERR: METAMASK_NOT_DETECTED');
+                return;
+            }
+
+            if (!stakingId || stakingId === 'None' || stakingId === '') {
+                alert('ERR: STAKING_ID_MISSING_FROM_SYSTEM_REGISTRY');
+                return;
+            }
+
+            try {
+                // 0. Ensure Base Chain
+                const isBase = await ensureBaseChain();
+                if (!isBase) {
+                    throw new Error('NETWORK_MISMATCH: PLEASE_SWITCH_TO_BASE_MAINNET');
+                }
+
+                const provider = new ethers.BrowserProvider(window.ethereum);
+                const signer = await provider.getSigner();
+                const userAddress = await signer.getAddress();
+
+                if (!confirm(`COMPLETION_CONFIRM: This will withdraw your commitment and mark this request as EXPIRED. Continue?`)) {
+                    return;
+                }
+
+                console.log(`Initiating blockchain withdrawal for ID: ${stakingId}`);
+                const withdrawData = stakingInterface.encodeFunctionData('withdraw', [stakingId]);
+                const txHash = await sendWalletTransaction({
+                    from: userAddress,
+                    to: STAKING_ADDR,
+                    data: withdrawData,
+                });
+                console.log(`TX_SENT: ${txHash}`);
+
+                const receipt = await waitForReceiptWithRpc(txHash);
+                if (receipt.status !== 1) {
+                    throw new Error('STAKING_WITHDRAW_FAILED');
+                }
+                console.log('TX_CONFIRMED');
+
+                await syncWithdrawalState(txHash);
+
+                alert('COMPLETED: Commitment withdrawn. Your post has been marked as EXPIRED and archived.');
+                window.location.reload();
+            } catch (err) {
+                console.error(err);
+                alert(`ERR: ${err.reason || err.message || 'TRANSACTION_FAILED'}`);
+            }
+        };
+    </script>
+</body>
+
+</html>
+
+
+
+
+

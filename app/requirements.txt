@@ -1,0 +1,8 @@
+flask
+supabase
+python-dotenv
+requests
+markdown
+eth-hash[pycryptodome]
+eth_account
+cobo-agentic-wallet

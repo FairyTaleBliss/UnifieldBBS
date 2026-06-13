@@ -1,0 +1,20 @@
+# Brownie configuration file
+# This helps resolve "max fee per gas less than block base fee" errors
+# commonly seen on base-fork or mainnet-fork networks.
+
+networks:
+  default: development
+  development:
+    priority_fee: "1 gwei"
+  mainnet-fork:
+    priority_fee: "1 gwei"
+  base-mainnet-fork:
+    priority_fee: "1 gwei"
+
+# Autopublish on etherscan/basescan if needed
+# autonetwork: true
+
+reports:
+  exclude_paths:
+    - contracts/mock_erc20.sol
+    - contracts/mock_aave.sol
