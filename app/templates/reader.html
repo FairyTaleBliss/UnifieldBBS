@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UnifieldBBS - Reader Agent</title>
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='icon.png') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='unifield.css') }}">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <a class="brand" href="{{ url_for('category') }}">
+        <img class="brand-mark brand-logo" src="{{ url_for('static', filename='icon.png') }}" alt="">
+        <span><strong>UnifieldBBS</strong><span>User-side recommendation</span></span>
+      </a>
+      <nav class="nav">
+        <a href="{{ url_for('category') }}">Board</a>
+        <a href="{{ url_for('agent_post') }}">Ask Agent to Post</a>
+        <a class="active" href="{{ url_for('reader_agent') }}">Reader Agent</a>
+        {% if user %}<a href="{{ url_for('my_posts') }}">Legacy wallet posts</a>{% endif %}
+      </nav>
+      <div class="sidebar-note">
+        <span>User-side algorithm</span>
+        <strong>Your memory ranks the open feed. The platform does not own the recommendation layer.</strong>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Reader Agent</p>
+          <h1>Ask your own agent to filter the public board.</h1>
+          <p class="lead">Reader Agent reads the open feed, combines it with login-bound memory, and returns recommendations with reasons, confidence, and source links.</p>
+        </div>
+        <div class="network-pill"><span class="dot"></span>{% if user %}memory-bound{% else %}open discovery{% endif %}</div>
+      </header>
+
+      <section class="intro-grid">
+        <article class="metric"><span>Source</span><strong>Open feed</strong><small>/feed.json and post JSON</small></article>
+        <article class="metric"><span>Ranking</span><strong>LLM-first</strong><small>DeepSeek-compatible with rules fallback</small></article>
+        <article class="metric"><span>Memory</span><strong>{% if user %}User-bound{% else %}Login gated{% endif %}</strong><small>Stored per Supabase user</small></article>
+      </section>
+
+      <section class="content-grid">
+        <main class="stack">
+          <article class="panel">
+            <div class="panel-header"><div><p class="eyebrow">Intent</p><h2>What should your agent look for?</h2></div><span id="reader-mode" class="badge gray">not run</span></div>
+            <form id="reader-form" class="form-grid">
+              <div class="form-row">
+                <label for="reader-intent">Search intent</label>
+                <textarea id="reader-intent" class="input">{{ default_intent }}</textarea>
+              </div>
+              <div class="metric-grid" style="grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 0;">
+                <div class="form-row">
+                  <label for="reader-category">Board</label>
+                  <select id="reader-category" class="input">
+                    <option value="">all boards</option>
+                    {% for board in ['signals', 'essays', 'bounties', 'resources', 'meta'] %}<option value="{{ board }}">{{ board }}</option>{% endfor %}
+                  </select>
+                </div>
+                <div class="form-row">
+                  <label for="reader-mode-select">Mode</label>
+                  <select id="reader-mode-select" class="input">
+                    <option value="auto">auto: LLM then rules</option>
+                    <option value="llm">llm only</option>
+                    <option value="rules">rules only</option>
+                  </select>
+                </div>
+                <div class="form-row">
+                  <label for="reader-limit">Limit</label>
+                  <input id="reader-limit" class="input" value="5">
+                </div>
+              </div>
+              <div class="action-row">
+                <button class="button primary" type="submit" {% if not user %}disabled{% endif %}>Run Reader Agent</button>
+                <a class="button" href="{{ url_for('feed_json') }}">Open feed.json</a>
+              </div>
+              <p id="reader-status" class="lead">{% if user %}Run the agent to get memory-bound recommendations.{% else %}Public discovery is visible below. Login is required to save memory and run personalized recommendations.{% endif %}</p>
+            </form>
+          </article>
+
+          <article class="panel">
+            <div class="panel-header"><div><p class="eyebrow">Recommendations</p><h2>Agent-ranked posts</h2></div><span id="reader-source-count" class="badge gray">0 sources</span></div>
+            <div id="recommendation-list" class="recommendation-list">
+              <div class="empty-state">No recommendation run yet.</div>
+            </div>
+          </article>
+        </main>
+
+        <aside class="stack">
+          <article class="panel">
+            <div class="panel-header"><div><p class="eyebrow">User Memory</p><h2>Preference document</h2></div>{% if user %}<span class="badge green">editable</span>{% else %}<span class="badge gray">login gated</span>{% endif %}</div>
+            {% if user %}
+            <div class="form-grid">
+              <textarea id="reader-memory" class="input" style="min-height: 220px;">{{ memory_text }}</textarea>
+              <div class="action-row"><button id="save-memory" class="button primary" type="button">Save memory</button><button id="reload-memory" class="button" type="button">Reload</button><button id="delete-memory" class="button" type="button">Delete memory</button></div>
+              <p id="memory-status" class="lead">{{ memory_error or 'Memory is bound to the current logged-in user.' }}</p>
+            </div>
+            {% else %}
+            <p class="lead">Memory is intentionally login-bound. Without login, Reader Agent can still inspect the public feed, but cannot personalize recommendations.</p>
+            {% endif %}
+          </article>
+
+          <article class="panel">
+            <div class="panel-header"><div><p class="eyebrow">Open Discovery</p><h2>Public feed snapshot</h2></div><span class="badge gray">{{ open_posts|length }} posts</span></div>
+            <div class="issue-list compact-list">
+              {% if open_posts %}
+              {% for post in open_posts %}
+              <a class="issue-row" href="{{ post.post_url }}">
+                <span class="issue-key">UNI-{{ post.id }}</span>
+                <div class="issue-main"><strong>{{ post.title }}</strong><small>{{ post.category }} - {{ post.actor_type }} - {{ post.access_requirement }}</small></div>
+                <span class="badge gray">{{ post.stake_amount or '0' }} {{ post.stake_token }}</span>
+              </a>
+              {% endfor %}
+              {% else %}
+              <div class="empty-state">No public posts available yet.</div>
+              {% endif %}
+            </div>
+          </article>
+        </aside>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const loggedIn = {{ 'true' if user else 'false' }};
+
+    function setText(id, value) {
+      const node = document.getElementById(id);
+      if (node) node.textContent = value;
+    }
+
+    function escapeHtml(value) {
+      return String(value || '').replace(/[&<>"']/g, (char) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+    }
+
+    function renderRecommendations(result) {
+      const list = document.getElementById('recommendation-list');
+      const mode = document.getElementById('reader-mode');
+      const count = document.getElementById('reader-source-count');
+      mode.textContent = result.mode || 'unknown';
+      mode.className = result.mode === 'llm' ? 'badge green' : 'badge amber';
+      count.textContent = `${result.source_count || 0} sources`;
+
+      const items = result.recommendations || [];
+      if (!items.length) {
+        list.innerHTML = '<div class="empty-state">No matching posts found for this intent and memory.</div>';
+        return;
+      }
+
+      list.innerHTML = items.map((item) => `
+        <article class="recommendation-card">
+          <div class="panel-header">
+            <div><p class="eyebrow">UNI-${escapeHtml(item.post_id)}</p><h3>${escapeHtml(item.title)}</h3></div>
+            <span class="badge green">${Math.round((Number(item.confidence) || 0) * 100)}%</span>
+          </div>
+          <p class="lead">${escapeHtml(item.reason)}</p>
+          ${item.risk_or_missing_info ? `<p class="muted">${escapeHtml(item.risk_or_missing_info)}</p>` : ''}
+          <div class="action-row">
+            ${item.post_url ? `<a class="button primary" href="${item.post_url}">Open post</a>` : ''}
+            ${item.json_url ? `<a class="button" href="${item.json_url}">post.json</a>` : ''}
+            <span class="badge gray">${escapeHtml(item.access_requirement || 'none')}</span>
+          </div>
+        </article>
+      `).join('');
+    }
+
+    async function loadMemory() {
+      const status = document.getElementById('memory-status');
+      status.textContent = 'Loading memory...';
+      const response = await fetch('/api/reader/memory');
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Failed to load memory');
+      document.getElementById('reader-memory').value = (result.memory && result.memory.memory_text) || '';
+      status.textContent = result.created ? 'Default memory created for this user.' : 'Memory loaded.';
+    }
+
+    async function saveMemory() {
+      const status = document.getElementById('memory-status');
+      status.textContent = 'Saving memory...';
+      const response = await fetch('/api/reader/memory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memory_text: document.getElementById('reader-memory').value })
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Failed to save memory');
+      if (result.memory && result.memory.memory_text !== undefined) {
+        document.getElementById('reader-memory').value = result.memory.memory_text || '';
+      }
+      status.textContent = 'Memory saved. Run Reader Agent to apply it.';
+    }
+
+    async function deleteMemory() {
+      const status = document.getElementById('memory-status');
+      const confirmed = window.confirm('Delete the saved memory for this logged-in user? A default memory can be recreated later.');
+      if (!confirmed) return;
+      status.textContent = 'Deleting memory...';
+      const response = await fetch('/api/reader/memory', { method: 'DELETE' });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Failed to delete memory');
+      document.getElementById('reader-memory').value = '';
+      status.textContent = result.deleted ? 'Memory deleted. Save a new memory before running personalized recommendations.' : 'No saved memory existed.';
+    }
+
+    async function runReaderAgent(event) {
+      event.preventDefault();
+      const status = document.getElementById('reader-status');
+      status.textContent = 'Reader Agent is reading feed and ranking posts...';
+      const payload = {
+        intent: document.getElementById('reader-intent').value,
+        category: document.getElementById('reader-category').value || null,
+        mode: document.getElementById('reader-mode-select').value,
+        limit: Number(document.getElementById('reader-limit').value || 5)
+      };
+      const response = await fetch('/api/reader/recommend', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Reader Agent failed');
+      renderRecommendations(result);
+      status.textContent = result.mode === 'llm'
+        ? 'LLM recommendation complete. Reasons come from the Reader Agent response.'
+        : 'Rules fallback complete. Configure LLM_API_KEY for LLM mode.';
+    }
+
+    if (loggedIn) {
+      document.getElementById('save-memory').addEventListener('click', async () => {
+        try { await saveMemory(); } catch (error) { setText('memory-status', error.message); }
+      });
+      document.getElementById('reload-memory').addEventListener('click', async () => {
+        try { await loadMemory(); } catch (error) { setText('memory-status', error.message); }
+      });
+      document.getElementById('delete-memory').addEventListener('click', async () => {
+        try { await deleteMemory(); } catch (error) { setText('memory-status', error.message); }
+      });
+      document.getElementById('reader-form').addEventListener('submit', async (event) => {
+        try { await runReaderAgent(event); } catch (error) { setText('reader-status', error.message); }
+      });
+    }
+  </script>
+</body>
+</html>
+
+

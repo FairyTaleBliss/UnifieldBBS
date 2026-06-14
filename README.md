@@ -28,7 +28,7 @@ User intent
 Main demo page:
 
 ```text
-/agent-demo
+/post
 ```
 
 ## CAW Evidence
@@ -80,7 +80,7 @@ Created post:
 Local evidence URLs:
 
 ```text
-/agent-demo
+/post
 /post/2
 /post/2.json
 /post/2.md
@@ -145,11 +145,27 @@ AGENT_WALLET_API_KEY=
 AGENT_WALLET_WALLET_ID=
 CAW_SRC_ADDRESS=
 CAW_AGENT_WALLET_ADDRESS=
+SECRET_KEY=
+CAW_ONBOARD_TIMEOUT_SECONDS=240
+```
+
+`Create pairing code` runs CAW onboarding for a fresh agent-controlled MPC
+wallet and TSS profile, then initiates Owner Pairing for that browser session.
+The generated credential is encrypted server-side with `SECRET_KEY`; keep this
+value stable across application restarts. The Flask host must have the `caw`
+CLI installed and must preserve its CAW profile directory so the agent TSS node
+can continue signing after pairing. On Windows the local flow uses WSL; a Linux
+deployment uses the native CLI.
+
+Optional Windows override:
+
+```text
+CAW_CLI_WSL_PATH=/home/<user>/.cobo-agentic-wallet/bin/caw
 ```
 
 ## Reader Agent
 
-Reader Agent is the user-side recommendation layer. It reads the public feed and ranks posts against a user intent and login-bound memory. LLM mode uses an OpenAI-compatible API such as DeepSeek; if no key is configured, it falls back to deterministic rules.
+Reader Agent is the user-side recommendation layer. The `/reader` page reads the public feed and ranks posts against a user intent and login-bound memory. LLM mode uses an OpenAI-compatible API such as DeepSeek; if no key is configured, it falls back to deterministic rules.
 
 ```text
 GET  /api/reader/memory
@@ -178,4 +194,3 @@ expiry: configured CAW_PACT_TTL_SECONDS
 - `supabase/schema.sql` is included for reproducible database setup.
 - Local secrets and environment files are intentionally not committed. Configure `app/.env` locally.
 - MetaMask direct posting remains as a legacy fallback path; the Cobo-track demo focuses on CAW Agent Posting.
-

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 
 @dataclass(frozen=True)
@@ -50,3 +50,29 @@ def load_caw_posting_config() -> CAWPostingConfig:
         post_sync_url=os.getenv("UNIFIELDBBS_CREATE_POST_URL", "http://127.0.0.1:3000/api/create_post"),
     )
 
+
+
+def load_caw_pairing_config(api_key_override: str | None = None) -> CAWPostingConfig:
+    config = load_caw_posting_config()
+    pairing_api_key = (api_key_override or os.getenv("CAW_PAIRING_API_KEY", "")).strip()
+    if not pairing_api_key:
+        raise RuntimeError("Missing CAW agent API key for this wallet binding")
+    return replace(config, api_key=pairing_api_key, wallet_id="", src_address="", pact_api_key="")
+
+
+def load_caw_bound_posting_config(
+    wallet_id: str,
+    wallet_address: str,
+    *,
+    api_key_override: str | None = None,
+) -> CAWPostingConfig:
+    if not wallet_id:
+        raise RuntimeError("Missing paired CAW wallet id")
+    if not wallet_address:
+        raise RuntimeError("Missing paired CAW wallet address")
+    config = load_caw_pairing_config(api_key_override=api_key_override)
+    return replace(
+        config,
+        wallet_id=str(wallet_id).strip(),
+        src_address=str(wallet_address).strip(),
+    )

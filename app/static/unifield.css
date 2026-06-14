@@ -70,6 +70,18 @@ button, input, textarea, select { font: inherit; }
   font-weight: 750;
 }
 
+.brand-logo {
+  display: block;
+  width: 46px;
+  height: 34px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  background: #fff;
+  object-fit: contain;
+  box-sizing: border-box;
+  flex: 0 0 auto;
+}
+
 .brand strong,
 .brand span { display: block; }
 .brand-subtitle,
@@ -265,6 +277,14 @@ h3 { font-size: 16px; }
   font-size: 15px;
 }
 
+.hero-copy h1 span {
+  display: block;
+  margin-top: 10px;
+  color: #526270;
+  font: inherit;
+  font-weight: 560;
+}
+
 .content-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 360px;
@@ -334,6 +354,26 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .audit-list dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 
 .step-list { display: grid; gap: 9px; }
+.execution-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.execution-grid .step-row {
+  min-height: 76px;
+  padding: 9px;
+  grid-template-columns: 26px minmax(0, 1fr);
+  gap: 8px;
+}
+.execution-grid .step-dot {
+  width: 24px;
+  height: 24px;
+}
+.execution-grid .step-row strong {
+  font-size: 13px;
+  line-height: 1.25;
+}
+.execution-grid .step-row small {
+  font-size: 11px;
+}
 .step-row {
   display: grid;
   grid-template-columns: 30px minmax(0, 1fr);
@@ -372,6 +412,85 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   outline: none;
 }
 .input:focus { border-color: #9fb8ff; box-shadow: 0 0 0 3px var(--blue-soft); }
+
+.withdraw-layout {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.board-feed-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.withdraw-summary {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fbfdfe;
+}
+
+.withdraw-summary span,
+.withdraw-summary strong,
+.withdraw-summary small {
+  display: block;
+}
+
+.withdraw-summary span,
+.withdraw-summary small {
+  color: var(--muted);
+}
+
+.withdraw-summary strong {
+  margin: 5px 0;
+}
+
+.address-value {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.withdraw-confirm {
+  margin-top: 12px;
+  color: var(--muted);
+}
+
+.withdraw-confirm label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.withdraw-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 11px 12px;
+  border: 1px solid #b9caef;
+  border-radius: 7px;
+  background: var(--blue-soft);
+}
+
+.withdraw-progress[hidden] { display: none; }
+.withdraw-progress strong,
+.withdraw-progress small { display: block; }
+.withdraw-progress small { margin-top: 2px; color: var(--muted); }
+
+.activity-spinner {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  border: 2px solid #afc2ec;
+  border-top-color: #3158b9;
+  border-radius: 50%;
+  animation: activity-spin 0.9s linear infinite;
+}
+
+@keyframes activity-spin {
+  to { transform: rotate(360deg); }
+}
 textarea.input { min-height: 120px; resize: vertical; }
 
 .empty-state {
@@ -422,6 +541,7 @@ textarea.input { min-height: 120px; resize: vertical; }
   .metric-grid,
   .hero-band,
   .content-grid { grid-template-columns: 1fr; }
+  .execution-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 620px) {
@@ -431,6 +551,8 @@ textarea.input { min-height: 120px; resize: vertical; }
   .nav-links { flex-wrap: wrap; }
   .issue-row { grid-template-columns: 1fr; }
   .audit-list div { grid-template-columns: 1fr; }
+  .execution-grid,
+  .withdraw-layout { grid-template-columns: 1fr; }
 }
 
 .developer-fallback {
@@ -452,4 +574,48 @@ textarea.input { min-height: 120px; resize: vertical; }
 .step-row small,
 .issue-main small {
   overflow-wrap: anywhere; /* receipt text */
+}
+
+.recommendation-list {
+  display: grid;
+  gap: 12px;
+}
+
+.recommendation-card {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px;
+  background: #fbfdfe;
+}
+
+.recommendation-card .panel-header {
+  margin-bottom: 10px;
+}
+
+.recommendation-card h3 {
+  overflow-wrap: anywhere;
+}
+
+.compact-list .issue-row {
+  grid-template-columns: 64px minmax(0, 1fr);
+}
+
+.compact-list .issue-row .badge {
+  grid-column: 2;
+}
+
+.caw-owner-card .empty-state {
+  margin-top: 12px;
+}
+
+.compact-audit div {
+  grid-template-columns: 86px minmax(0, 1fr);
+}
+
+.pair-code {
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  font-variant-numeric: tabular-nums;
 }

@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>UnifieldBBS - My Posts</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='icon.png') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='unifield.css') }}">
 </head>
 
@@ -13,12 +14,12 @@
         <div class="container">
             <header class="topbar">
                 <a class="brand" href="{{ url_for('category') }}">
-                    <span class="brand-mark">U</span>
+                    <img class="brand-mark brand-logo" src="{{ url_for('static', filename='icon.png') }}" alt="">
                     <span>UnifieldBBS<span class="brand-subtitle">My stake-backed posts</span></span>
                 </a>
                 <nav class="nav-links">
                     <a class="nav-link" href="{{ url_for('category') }}">Board</a>
-                    <a class="nav-link" href="{{ url_for('agent_demo') }}">Agent Posting</a>
+                    <a class="nav-link" href="{{ url_for('agent_post') }}">Agent Posting</a>
                     {% if user.login_type == 'wallet' %}<a class="button primary" href="{{ url_for('stake') }}">New post</a>{% endif %}
                     <a class="nav-link" href="{{ url_for('logout') }}">Logout</a>
                 </nav>

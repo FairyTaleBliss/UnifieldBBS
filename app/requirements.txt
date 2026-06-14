@@ -6,3 +6,4 @@ markdown
 eth-hash[pycryptodome]
 eth_account
 cobo-agentic-wallet
+cryptography

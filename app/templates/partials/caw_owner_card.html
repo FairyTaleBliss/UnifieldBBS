@@ -1,0 +1,25 @@
+<article class="panel caw-owner-card">
+  <div class="panel-header">
+    <div><p class="eyebrow">CAW Pairing</p><h2>Owner login</h2></div>
+    {% if caw_session and caw_session.connected %}<span class="badge green">Connected</span>{% elif caw_session and caw_session.binding %}<span class="badge yellow">Pairing</span>{% else %}<span class="badge gray">Not paired</span>{% endif %}
+  </div>
+  {% if caw_session and caw_session.connected %}
+  <p class="lead">This browser session is paired through Cobo Agentic Wallet. Owner-only features can now use this CAW identity.</p>
+  <dl class="audit-list compact-audit">
+    <div><dt>Wallet</dt><dd>{{ caw_session.user.caw_wallet_address or 'created CAW wallet' }}</dd></div>
+    <div><dt>Wallet ID</dt><dd>{{ caw_session.user.caw_wallet_id }}</dd></div>
+    <div><dt>Owner ID</dt><dd>{{ caw_session.user.caw_owner_id or 'paired' }}</dd></div>
+  </dl>
+  <div class="action-row"><a class="button" href="{{ url_for('logout') }}">Disconnect</a></div>
+  {% else %}
+  <p class="lead">Create a fresh CAW wallet for this browser session, then pair it in the Cobo Agentic Wallet App. CAW credentials stay on the backend.</p>
+  <div class="action-row"><button class="button primary caw-pair-start" type="button">Create pairing code</button><button class="button caw-pair-refresh" type="button">Check status</button></div>
+  <div class="caw-pair-result empty-state">
+    {% if caw_session and caw_session.binding %}
+    Pending pairing for wallet {{ caw_session.binding.caw_wallet_id }}.
+    {% else %}
+    No pairing request yet.
+    {% endif %}
+  </div>
+  {% endif %}
+</article>

@@ -3,6 +3,12 @@ __pycache__/
 *.py[cod]
 *.pyc
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyright/
+.coverage
+coverage.xml
+htmlcov/
 
 # Local environments
 .venv/
@@ -21,9 +27,18 @@ tempCodeRunnerFile.py
 app/tempCodeRunnerFile.py
 .DS_Store
 Thumbs.db
+.vscode/
+.idea/
+*.log
+/gen_pairing_key.py
+/new_key.txt
+/refresh_pairing.py
+/refresh_pairing.sh
+/test_*.py
 
 # Frontend/design scratch
 style_temp/
+/icon.png
 
 # Remix / Solidity compiler artifacts
 artifacts/

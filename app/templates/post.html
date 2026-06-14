@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UnifieldBBS - Ask Agent to Post</title>
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='icon.png') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='unifield.css') }}">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <a class="brand" href="{{ url_for('category') }}">
+        <img class="brand-mark brand-logo" src="{{ url_for('static', filename='icon.png') }}" alt="">
+        <span><strong>UnifieldBBS</strong><span>Agent Posting</span></span>
+      </a>
+      <nav class="nav">
+        <a href="{{ url_for('category') }}">Board</a>
+        <a class="active" href="{{ url_for('agent_post') }}">Ask Agent to Post</a>
+        <a href="{{ url_for('reader_agent') }}">Reader Agent</a>
+        {% if user %}<a href="{{ url_for('my_posts') }}">Legacy wallet posts</a>{% endif %}
+      </nav>
+      <div class="sidebar-note">
+        <span>CAW Agent execution layer</span>
+        <strong>Wallet authority stays inside CAW policies.</strong>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">CAW-linked Agent Posting</p>
+          <h1>Ask an Agent to publish. CAW controls the wallet action.</h1>
+        </div>
+        <div class="network-pill"><span class="dot"></span>{{ chain_config.network_slug }} - {{ demo.policy_status }}</div>
+      </header>
+
+      <section class="intro-grid">
+        <article class="metric"><span>Agent wallet</span><strong id="summary-agent-wallet" style="font-size:16px; overflow-wrap:anywhere;">{{ active_run.agent_wallet }}</strong><small>CAW execution wallet</small></article>
+        <article class="metric"><span>Current run</span><strong id="summary-run-status">{{ active_run.status }}</strong><small>Latest persisted agent request</small></article>
+        <article class="metric"><span>Post</span><strong id="summary-post-id">{{ active_run.post_id or 'pending' }}</strong><small>Created after verified deposit</small></article>
+      </section>
+
+      <section class="content-grid">
+        <main class="stack">
+          <article class="panel">
+            <div class="panel-header">
+              <div><p class="eyebrow">Step 1</p><h2>Describe the post you want</h2></div>
+              <span class="badge green">CAW execution</span>
+            </div>
+            <form id="agent-run-form" class="form-grid">
+              <div class="form-row">
+                <label for="requester_label">User / owner label</label>
+                <input id="requester_label" class="input" value="CAW-linked user">
+                <small>This identifies who asked the Agent to act. The signing wallet is the CAW Agent Wallet.</small>
+              </div>
+              <div class="form-row">
+                <label for="goal">Goal</label>
+                <textarea id="goal" class="input">{{ active_run.goal }}</textarea>
+                <small>Write the outcome. The form turns user intent into a bounded wallet action.</small>
+              </div>
+              <div class="metric-grid" style="grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 0;">
+                <div class="form-row">
+                  <label for="category">Board</label>
+                  <select id="category" class="input">
+                    {% for board in ['signals', 'essays', 'bounties', 'resources', 'meta'] %}<option value="{{ board }}" {% if active_run.category == board %}selected{% endif %}>{{ board }}</option>{% endfor %}
+                  </select>
+                </div>
+                <div class="form-row"><label for="stake_amount">Stake cap</label><input id="stake_amount" class="input" value="{{ active_run.stake_amount }}"></div>
+                <div class="form-row">
+                  <label for="visibility_mode">Visibility</label>
+                  <select id="visibility_mode" class="input">
+                    <option value="public" {% if active_run.visibility_mode == 'public' %}selected{% endif %}>public</option>
+                    <option value="login_required" {% if active_run.visibility_mode == 'login_required' %}selected{% endif %}>login_required</option>
+                    <option value="paid_full_text" {% if active_run.visibility_mode == 'paid_full_text' %}selected{% endif %}>paid_full_text</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-row"><label for="tags">Tags</label><input id="tags" class="input" value="{{ active_run.tags|join(', ') }}"></div>
+              <div class="action-row">
+                <button class="button primary" type="submit">Ask Agent to Execute</button>
+                <button id="resume-agent-run" class="button" type="button" {% if active_run.status != 'failed' %}hidden{% endif %}>Resume current request</button>
+                <button class="button" type="button" onclick="refreshPactPreview()">Refresh Pact preview</button>
+              </div>
+              <p id="agent-run-status" class="lead">
+                {% if active_run.is_verified %}
+                Agent request {{ active_run.id }} verified. Post {{ active_run.post_id }} is now in the board and agent-readable feed.
+                {% elif active_run.status == 'failed' %}
+                Agent request {{ active_run.id }} failed: {{ active_run.error_message or 'check backend logs before retrying.' }}
+                {% else %}
+                Agent request {{ active_run.id }} is {{ active_run.status }}. Backend Agent Executor is running CAW and verifying tx evidence...
+                {% endif %}
+              </p>
+            </form>
+          </article>
+
+          <article class="panel">
+            <div class="panel-header"><div><p class="eyebrow">Step 2</p><h2>CAW execution timeline</h2></div><span id="timeline-status-badge" class="badge {{ 'green' if active_run.is_verified else ('red' if active_run.status == 'failed' else 'amber') }}">{{ 'verified' if active_run.is_verified else active_run.status }}</span></div>
+            <div id="run-timeline" class="step-list execution-grid">
+              {% for step in active_run.steps %}
+              <div class="step-row"><span class="step-dot">{{ loop.index }}</span><div><strong>{{ step.name }}</strong><small>{{ step.status }}</small></div></div>
+              {% endfor %}
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-header"><div><p class="eyebrow">Stake lifecycle</p><h2>Withdraw stake</h2></div></div>
+            <div class="withdraw-layout">
+              <div class="withdraw-summary">
+                <span>Selected post</span>
+                <strong id="withdraw-post-label">{{ 'UNI-' ~ active_run.post_id if active_run.post_id else 'No active post' }}</strong>
+                <small>{{ active_run.category|capitalize }} · {{ active_run.stake_amount }} {{ chain_config.usdc_symbol }}</small>
+              </div>
+              <div class="withdraw-summary">
+                <span>Destination</span>
+                <strong class="address-value">{{ active_run.agent_wallet }}</strong>
+                <small>CAW owner-linked wallet</small>
+              </div>
+              <div class="withdraw-summary">
+                <span>Result</span>
+                <strong>Expire post</strong>
+                <small>Verified Withdrawn event removes it from active feeds</small>
+              </div>
+            </div>
+            <div class="withdraw-confirm">
+              <label><input id="withdraw-confirm-check" type="checkbox"> I understand the post becomes inactive after withdrawal.</label>
+            </div>
+            <div id="withdraw-progress" class="withdraw-progress" hidden>
+              <span class="activity-spinner" aria-hidden="true"></span>
+              <div><strong>Awaiting CAW authorization</strong><small>Withdraw Pact · contract call · event verification</small></div>
+            </div>
+            <div id="lifecycle-links" class="action-row">
+              <button id="withdraw-preview-button" class="button primary" type="button" {% if not active_run.is_verified %}disabled{% endif %}>Withdraw {{ active_run.stake_amount }} {{ chain_config.usdc_symbol }}</button>
+              {% if active_run.is_verified and active_run.post_url %}<a class="button" href="{{ active_run.post_url }}">Open current post</a>{% endif %}
+            </div>
+          </article>
+        </main>
+
+        <aside class="stack">
+          {% include 'partials/caw_owner_card.html' %}
+          <article class="panel">
+            <div class="panel-header"><div><p class="eyebrow">Pact Boundary Preview</p><h2>Least privilege</h2></div></div>
+            <textarea id="pact-preview" class="input" style="min-height: 260px;" readonly></textarea>
+          </article>
+
+          <article class="panel">
+            <div class="panel-header"><div><p class="eyebrow">Execution evidence</p><h2>CAW receipt</h2></div><span id="receipt-status-badge" class="badge {{ 'green' if active_run.is_verified else ('red' if active_run.status == 'failed' else 'amber') }}">{{ 'on-chain evidence' if active_run.is_verified else active_run.status }}</span></div>
+            <dl class="audit-list">
+              <div><dt>Run ID</dt><dd id="evidence-run-id">{{ active_run.id }}</dd></div>
+              <div><dt>Requester</dt><dd id="evidence-requester">{{ active_run.requester_label }}</dd></div>
+              <div><dt>Agent wallet</dt><dd id="evidence-agent-wallet">{{ active_run.agent_wallet }}</dd></div>
+              <div><dt>Pact ID</dt><dd id="evidence-pact-id">{{ active_run.pact_id }}</dd></div>
+              <div><dt>Approve req</dt><dd id="evidence-approve-request-id">{{ active_run.approve_request_id }}</dd></div>
+              <div><dt>Approve tx</dt><dd id="evidence-approve-tx">{{ active_run.approve_tx or 'pending' }}</dd></div>
+              <div><dt>Deposit req</dt><dd id="evidence-deposit-request-id">{{ active_run.deposit_request_id }}</dd></div>
+              <div><dt>Deposit tx</dt><dd id="evidence-deposit-tx">{{ active_run.deposit_tx or 'pending' }}</dd></div>
+              <div><dt>Post ID</dt><dd id="evidence-post-id">{{ active_run.post_id or 'pending' }}</dd></div>
+            </dl>
+            <div id="evidence-links" class="action-row">
+              {% if active_run.is_verified and active_run.post_url %}<a class="button primary" href="{{ active_run.post_url }}">Open post</a>{% endif %}
+              <a class="button" href="{{ active_run.feed_url }}">feed.json</a>
+              {% if active_run.is_verified and active_run.post_json_url %}<a class="button" href="{{ active_run.post_json_url }}">post.json</a>{% endif %}
+              {% if active_run.is_verified and active_run.post_md_url %}<a class="button" href="{{ active_run.post_md_url }}">post.md</a>{% endif %}
+            </div>
+          </article>
+        </aside>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const boundary = {{ demo.boundary | tojson }};
+    const initialRun = {{ active_run | tojson }};
+
+    function readRunForm() {
+      return {
+        requester_label: document.getElementById('requester_label').value.trim(),
+        goal: document.getElementById('goal').value.trim(),
+        category: document.getElementById('category').value,
+        stake_amount: document.getElementById('stake_amount').value.trim(),
+        visibility_mode: document.getElementById('visibility_mode').value,
+        tags: document.getElementById('tags').value
+      };
+    }
+
+    function refreshPactPreview() {
+      const run = readRunForm();
+      document.getElementById('pact-preview').value = `Intent:\n${run.goal}\n\nExecution plan:\n1. Draft a ${run.category} post from the user intent.\n2. Submit or reuse a Pact approved by the CAW owner.\n3. Execute USDC approve and BBSStaking deposit from the Agent Wallet.\n4. Sync the verified deposit tx into UnifieldBBS.\n\nPolicies:\n- Chain: ${boundary.chain}\n- Token: ${boundary.token}\n- Token contract: ${boundary.token_contract}\n- Staking contract: ${boundary.staking_contract}\n- Max stake: ${run.stake_amount} ${boundary.token}\n- Max tx count: ${boundary.max_tx_count}\n- TTL: ${boundary.ttl} seconds\n- Visibility: ${run.visibility_mode}\n\nCompletion:\n- Post is created only after backend verifies the Deposited event.\n- CAW credentials remain in the agent execution layer, never in the browser.`;
+    }
+
+    let activePoll = null;
+    let currentRunId = {{ active_run.id | tojson }};
+
+    function setText(id, value) {
+      const node = document.getElementById(id);
+      if (node) node.textContent = value || 'pending';
+    }
+
+    function setBadge(id, label, tone) {
+      const node = document.getElementById(id);
+      if (!node) return;
+      node.textContent = label;
+      node.className = `badge ${tone}`;
+    }
+
+    function renderEvidence(agentRun) {
+      const verified = Boolean(agentRun.is_verified && agentRun.deposit_tx && agentRun.post_id);
+      const tone = verified ? 'green' : (agentRun.status === 'failed' ? 'red' : 'amber');
+      setText('summary-agent-wallet', agentRun.agent_wallet);
+      setText('summary-run-status', verified ? 'verified' : agentRun.status);
+      setText('summary-post-id', verified ? agentRun.post_id : 'pending');
+      setBadge('timeline-status-badge', verified ? 'verified' : agentRun.status, tone);
+      setBadge('receipt-status-badge', verified ? 'on-chain evidence' : agentRun.status, tone);
+      setText('evidence-run-id', agentRun.id);
+      setText('evidence-requester', agentRun.requester_label);
+      setText('evidence-agent-wallet', agentRun.agent_wallet);
+      setText('evidence-pact-id', agentRun.pact_id);
+      setText('evidence-approve-request-id', agentRun.approve_request_id);
+      setText('evidence-approve-tx', agentRun.approve_tx);
+      setText('evidence-deposit-request-id', agentRun.deposit_request_id);
+      setText('evidence-deposit-tx', agentRun.deposit_tx);
+      setText('evidence-post-id', verified ? agentRun.post_id : 'pending');
+      setText('withdraw-post-label', verified ? `UNI-${agentRun.post_id}` : 'No active post');
+      const links = document.getElementById('evidence-links');
+      if (links) {
+        const postLinks = verified && agentRun.post_url
+          ? `<a class="button primary" href="${agentRun.post_url}">Open post</a><a class="button" href="${agentRun.post_json_url}">post.json</a><a class="button" href="${agentRun.post_md_url}">post.md</a>`
+          : '';
+        const feedLink = agentRun.feed_url ? `<a class="button" href="${agentRun.feed_url}">feed.json</a>` : '';
+        links.innerHTML = `${postLinks}${feedLink}`;
+      }
+    }
+
+    function renderTimeline(agentRun) {
+      currentRunId = agentRun.id;
+      renderEvidence(agentRun);
+      const target = document.getElementById('run-timeline');
+      target.innerHTML = agentRun.steps.map((step, index) => `<div class="step-row"><span class="step-dot">${index + 1}</span><div><strong>${step.name}</strong><small>${step.status}</small></div></div>`).join('');
+      const status = document.getElementById('agent-run-status');
+      const resumeButton = document.getElementById('resume-agent-run');
+      const verified = Boolean(agentRun.is_verified && agentRun.deposit_tx && agentRun.post_id);
+      if (resumeButton) resumeButton.hidden = verified || agentRun.status !== 'failed';
+      if (verified) {
+        status.textContent = `Agent request ${agentRun.id} verified. Post ${agentRun.post_id} is now in the board and agent-readable feed.`;
+        if (activePoll) window.clearInterval(activePoll);
+      } else if (agentRun.status === 'verified') {
+        status.textContent = `Agent request ${agentRun.id} reported verified, but deposit transaction or post evidence is incomplete.`;
+        if (activePoll) window.clearInterval(activePoll);
+      } else if (agentRun.status === 'failed') {
+        const recoveryNote = agentRun.can_reconcile ? ' Checking CAW for delayed confirmation...' : '';
+        status.textContent = `Agent request ${agentRun.id} failed: ${agentRun.error_message || 'check backend logs before retrying.'}${recoveryNote}`;
+        if (!agentRun.can_reconcile && activePoll) window.clearInterval(activePoll);
+      } else {
+        status.textContent = `Agent request ${agentRun.id} is ${agentRun.status}. Backend Agent Executor is running CAW and verifying tx evidence...`;
+      }
+    }
+
+    async function pollAgentRun(id) {
+      try {
+        const response = await fetch(`/api/agent-runs/${id}`);
+        const result = await response.json();
+        if (response.ok && result.agent_run) renderTimeline(result.agent_run);
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
+    async function startAgentExecution(id) {
+      const response = await fetch(`/api/agent-runs/${id}/execute`, { method: 'POST' });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || 'Failed to start Agent Executor');
+      if (result.agent_run) renderTimeline(result.agent_run);
+    }
+
+    document.getElementById('resume-agent-run').addEventListener('click', async () => {
+      if (!currentRunId) return;
+      const status = document.getElementById('agent-run-status');
+      status.textContent = `Resuming Agent request ${currentRunId} with the same CAW request IDs...`;
+      try {
+        if (activePoll) window.clearInterval(activePoll);
+        activePoll = window.setInterval(() => pollAgentRun(currentRunId), 3000);
+        await startAgentExecution(currentRunId);
+      } catch (error) {
+        console.error(error);
+        status.textContent = error.message || 'Failed to resume Agent request.';
+      }
+    });
+
+    document.getElementById('withdraw-preview-button').addEventListener('click', () => {
+      const confirmed = document.getElementById('withdraw-confirm-check').checked;
+      const progress = document.getElementById('withdraw-progress');
+      const button = document.getElementById('withdraw-preview-button');
+      if (!confirmed) {
+        button.textContent = 'Confirm withdrawal first';
+        return;
+      }
+      progress.hidden = false;
+      button.textContent = 'Authorization requested';
+      button.disabled = true;
+    });
+
+    document.getElementById('agent-run-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const status = document.getElementById('agent-run-status');
+      status.textContent = 'Creating Agent request...';
+      try {
+        const response = await fetch('/api/agent-runs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(readRunForm())
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.error || 'Failed to create Agent request');
+        renderTimeline(result.agent_run);
+        if (activePoll) window.clearInterval(activePoll);
+        activePoll = window.setInterval(() => pollAgentRun(result.agent_run.id), 3000);
+        status.textContent = `Agent request ${result.agent_run.id} created. Starting backend Agent Executor...`;
+        await startAgentExecution(result.agent_run.id);
+      } catch (error) {
+        console.error(error);
+        status.textContent = error.message || 'Failed to create or execute Agent request.';
+      }
+    });
+
+    window.addEventListener('load', () => {
+      refreshPactPreview();
+      renderTimeline(initialRun);
+      if (initialRun.can_reconcile || initialRun.status === 'executing') {
+        if (activePoll) window.clearInterval(activePoll);
+        activePoll = window.setInterval(() => pollAgentRun(initialRun.id), 3000);
+        pollAgentRun(initialRun.id);
+      }
+    });
+  </script>
+  <script src="{{ url_for('static', filename='caw_owner.js') }}"></script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+

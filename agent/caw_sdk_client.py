@@ -21,13 +21,18 @@ def require_sdk_client():
     return WalletAPIClient
 
 
-def require_caw_credentials(config: CAWPostingConfig, *, api_key_override: str | None = None) -> None:
+def require_caw_credentials(
+    config: CAWPostingConfig,
+    *,
+    api_key_override: str | None = None,
+    require_wallet: bool = True,
+) -> None:
     missing = []
     if not config.api_url:
         missing.append("AGENT_WALLET_API_URL")
     if not (api_key_override or config.api_key):
         missing.append("AGENT_WALLET_API_KEY")
-    if not config.wallet_id:
+    if require_wallet and not config.wallet_id:
         missing.append("AGENT_WALLET_WALLET_ID")
     if missing:
         raise RuntimeError("Missing CAW environment variables: " + ", ".join(missing))
@@ -112,6 +117,12 @@ async def contract_call_async(
 ) -> dict[str, Any]:
     require_caw_credentials(config, api_key_override=api_key_override)
     WalletAPIClient = require_sdk_client()
+    fee = call.get("fee")
+    if isinstance(fee, dict):
+        from cobo_agentic_wallet_api.models.eip1559_fee_request import EIP1559FeeRequest
+        from cobo_agentic_wallet_api.models.fee_request import FeeRequest
+
+        fee = FeeRequest(EIP1559FeeRequest(**fee))
     async with WalletAPIClient(base_url=config.api_url, api_key=api_key_override or config.api_key) as client:
         return await client.contract_call(
             config.wallet_id,
@@ -120,8 +131,28 @@ async def contract_call_async(
             value=str(call.get("value", "0")),
             calldata=call["calldata"],
             request_id=call.get("request_id"),
+            fee=fee,
             src_addr=call.get("src_addr") or config.src_address or None,
             description=call.get("description") or call.get("label"),
+        )
+
+
+async def estimate_contract_call_fee_async(
+    config: CAWPostingConfig,
+    call: dict[str, Any],
+    *,
+    api_key_override: str | None = None,
+) -> dict[str, Any]:
+    require_caw_credentials(config, api_key_override=api_key_override)
+    WalletAPIClient = require_sdk_client()
+    async with WalletAPIClient(base_url=config.api_url, api_key=api_key_override or config.api_key) as client:
+        return await client.estimate_contract_call_fee(
+            config.wallet_id,
+            chain_id=call["chain_id"],
+            contract_addr=call["contract_addr"],
+            value=str(call.get("value", "0")),
+            calldata=call["calldata"],
+            src_addr=call.get("src_addr") or config.src_address or None,
         )
 
 
@@ -164,6 +195,109 @@ async def wait_for_pact_status_async(
         await asyncio.sleep(poll_seconds)
 
 
+
+async def get_wallet_async(
+    config: CAWPostingConfig,
+    *,
+    wallet_id: str | None = None,
+    include_spend_summary: bool = False,
+) -> dict[str, Any]:
+    require_caw_credentials(config, require_wallet=wallet_id is None)
+    WalletAPIClient = require_sdk_client()
+    async with WalletAPIClient(base_url=config.api_url, api_key=config.api_key) as client:
+        return await client.get_wallet(wallet_id or config.wallet_id, include_spend_summary=include_spend_summary)
+
+
+async def create_wallet_async(
+    config: CAWPostingConfig,
+    *,
+    name: str,
+    wallet_type: str = "MPC",
+    main_node_id: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    require_caw_credentials(config, require_wallet=False)
+    if wallet_type == "MPC" and not main_node_id:
+        raise RuntimeError("Missing CAW main_node_id for wallet creation")
+    WalletAPIClient = require_sdk_client()
+    async with WalletAPIClient(base_url=config.api_url, api_key=config.api_key) as client:
+        return await client.create_wallet(
+            wallet_type=wallet_type,
+            name=name,
+            group_type="agent",
+            main_node_id=main_node_id,
+            metadata=metadata or {},
+            for_owner=False,
+        )
+
+
+async def create_wallet_address_async(
+    config: CAWPostingConfig,
+    wallet_id: str,
+    *,
+    chain_type: str = "ETH",
+) -> dict[str, Any]:
+    require_caw_credentials(config, require_wallet=False)
+    WalletAPIClient = require_sdk_client()
+    async with WalletAPIClient(base_url=config.api_url, api_key=config.api_key) as client:
+        return await client.create_wallet_address(wallet_id, chain_type=chain_type)
+
+
+async def initiate_wallet_pair_async(config: CAWPostingConfig, *, wallet_id: str | None = None) -> dict[str, Any]:
+    require_caw_credentials(config, require_wallet=wallet_id is None)
+    WalletAPIClient = require_sdk_client()
+    payload = {"wallet_id": wallet_id or config.wallet_id}
+    async with WalletAPIClient(base_url=config.api_url, api_key=config.api_key) as client:
+        return await client.initiate_wallet_pair(payload)
+
+
+async def get_pair_info_by_wallet_async(config: CAWPostingConfig, *, wallet_id: str | None = None) -> dict[str, Any]:
+    require_caw_credentials(config, require_wallet=wallet_id is None)
+    WalletAPIClient = require_sdk_client()
+    async with WalletAPIClient(base_url=config.api_url, api_key=config.api_key) as client:
+        return await client.get_pair_info_by_wallet(wallet_id or config.wallet_id)
+
+
+def get_wallet(
+    config: CAWPostingConfig,
+    *,
+    wallet_id: str | None = None,
+    include_spend_summary: bool = False,
+) -> dict[str, Any]:
+    return asyncio.run(get_wallet_async(config, wallet_id=wallet_id, include_spend_summary=include_spend_summary))
+
+
+def create_wallet(
+    config: CAWPostingConfig,
+    *,
+    name: str,
+    wallet_type: str = "MPC",
+    main_node_id: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return asyncio.run(
+        create_wallet_async(
+            config,
+            name=name,
+            wallet_type=wallet_type,
+            main_node_id=main_node_id,
+            metadata=metadata,
+        )
+    )
+
+
+def create_wallet_address(config: CAWPostingConfig, wallet_id: str, *, chain_type: str = "EVM") -> dict[str, Any]:
+    return asyncio.run(create_wallet_address_async(config, wallet_id, chain_type=chain_type))
+
+
+def initiate_wallet_pair(config: CAWPostingConfig, *, wallet_id: str | None = None) -> dict[str, Any]:
+    return asyncio.run(initiate_wallet_pair_async(config, wallet_id=wallet_id))
+
+
+def get_pair_info_by_wallet(config: CAWPostingConfig, *, wallet_id: str | None = None) -> dict[str, Any]:
+    return asyncio.run(get_pair_info_by_wallet_async(config, wallet_id=wallet_id))
+
+
 def submit_pact(config: CAWPostingConfig, pact_spec: dict[str, Any]) -> dict[str, Any]:
     return asyncio.run(submit_pact_async(config, pact_spec))
 
@@ -180,6 +314,20 @@ def contract_call(
 ) -> dict[str, Any]:
     return asyncio.run(contract_call_async(config, call, api_key_override=api_key_override))
 
+
+def estimate_contract_call_fee(
+    config: CAWPostingConfig,
+    call: dict[str, Any],
+    *,
+    api_key_override: str | None = None,
+) -> dict[str, Any]:
+    return asyncio.run(
+        estimate_contract_call_fee_async(
+            config,
+            call,
+            api_key_override=api_key_override,
+        )
+    )
 
 def get_transaction_by_request_id(
     config: CAWPostingConfig,

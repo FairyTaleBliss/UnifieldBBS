@@ -67,7 +67,7 @@ create table if not exists public.agent_memories (
   updated_at timestamptz not null default now(),
   constraint agent_memories_user_id_unique unique (user_id),
   constraint agent_memories_login_type_check
-    check (login_type in ('wallet', 'twitter'))
+    check (login_type in ('wallet', 'twitter', 'caw_owner'))
 );
 
 create index if not exists agent_memories_wallet_address_lower_idx
@@ -128,5 +128,38 @@ on public.agent_runs (post_id);
 drop trigger if exists set_agent_runs_updated_at on public.agent_runs;
 create trigger set_agent_runs_updated_at
 before update on public.agent_runs
+for each row
+execute function public.set_updated_at();
+
+alter table if exists public.agent_memories
+  drop constraint if exists agent_memories_login_type_check;
+
+alter table if exists public.agent_memories
+  add constraint agent_memories_login_type_check
+  check (login_type in ('wallet', 'twitter', 'caw_owner'));
+create table if not exists public.caw_wallet_bindings (
+  id uuid primary key default gen_random_uuid(),
+  caw_wallet_id text not null,
+  caw_wallet_address text,
+  caw_agent_id text,
+  caw_owner_id text,
+  pair_token text,
+  pair_code text,
+  pair_status text not null default 'pending',
+  pair_payload jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  paired_at timestamptz,
+  constraint caw_wallet_bindings_wallet_id_unique unique (caw_wallet_id),
+  constraint caw_wallet_bindings_pair_status_check
+    check (pair_status in ('pending', 'paired', 'expired', 'failed'))
+);
+
+create index if not exists caw_wallet_bindings_status_idx
+on public.caw_wallet_bindings (pair_status, updated_at desc);
+
+drop trigger if exists set_caw_wallet_bindings_updated_at on public.caw_wallet_bindings;
+create trigger set_caw_wallet_bindings_updated_at
+before update on public.caw_wallet_bindings
 for each row
 execute function public.set_updated_at();
